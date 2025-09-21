@@ -1,0 +1,33 @@
+version: "3.9"  # versão do schema do docker-compose
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management   # imagem já vem com o plugin de administração
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"     # porta para os serviços se conectarem
+      - "15672:15672"   # painel web
+    environment:
+      RABBITMQ_DEFAULT_USER: admin   # usuário inicial
+      RABBITMQ_DEFAULT_PASS: admin   # senha inicial
+    networks:
+      - app_network
+
+  mongodb:
+    image: mongo:6.0   # versão estável recente
+    container_name: mongodb
+    ports:
+      - "27017:27017"   # porta para acesso externo
+    volumes:
+      - mongo_data:/data/db   # persiste os dados mesmo se o container for destruído
+    networks:
+      - app_network
+
+# Volumes = área de armazenamento persistente
+volumes:
+  mongo_data:
+
+# Network = rede interna que conecta os serviços
+networks:
+  app_network:
+    driver: bridge
