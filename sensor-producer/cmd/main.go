@@ -11,13 +11,14 @@ import (
 )
 
 type SensorData struct {
-	SensorID    string  `json:"sensor_id"`
-	Temperature float64 `json:"temperature"`
-	Timestamp   string  `json:"timestamp"`
+	Value      float64 `json:"value"`
+	SensorType string  `json:"type"`
+	Timestamp  string  `json:"timestamp"`
+	Place      string  `json:"place"`
 }
 
 func main() {
-	conn, err := amqp091.Dial("amqp://admin:admin@localhost:5672/")
+	conn, err := amqp091.Dial("amqps://hgmyguwa:Sg7aBCRxSyhg-LAjaDVZBF98UBSEcNww@jaragua.lmq.cloudamqp.com/hgmyguwa")
 	if err != nil {
 		log.Fatalf("Erro ao conectar RabbitMQ: %s", err)
 	}
@@ -45,9 +46,10 @@ func main() {
 
 	for {
 		data := SensorData{
-			SensorID:    "sensor_1",
-			Temperature: 45 + rand.Float64()*10, //Temperatura
-			Timestamp:   time.Now().Format(time.RFC3339),
+			SensorType: "temperature",
+			Value:      45 + rand.Float64()*10, //Temperatura
+			Timestamp:  time.Now().Format(time.RFC3339),
+			Place:      "jaragua",
 		}
 
 		body, err := json.Marshal(data)

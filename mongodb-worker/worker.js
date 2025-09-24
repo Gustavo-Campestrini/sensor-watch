@@ -4,12 +4,12 @@ const mongoose = require('mongoose');
 
 const rabbitmqUrl = process.env.RABBITMQ_URL;
 const mongoUrl    = process.env.MONGO_URL;
-const queueName   = 'alerts.log'; 
+const queueName   = 'alerts'; 
 
 const alertSchema = new mongoose.Schema({
     type: String,    
     value: Number,    
-    sensor: String, 
+    place: String, 
     timestamp: { type: Date, default: Date.now }, 
 });
 
@@ -29,12 +29,13 @@ async function startWorker() {
 
         console.log(`[*] Aguardando mensagens na fila '${queueName}'. Para sair, pressione CTRL+C`);
 
-        // Começa a consumir mensagens da fila
         channel.consume(queueName, async (msg) => {
+
             if (msg !== null) {
                 try {
-                    const alertData = JSON.parse(msg.content.toString());
-                    console.log(" [x] Recebido:", alertData);
+                    const messageContent = msg.content.toString();
+                    const alertData = JSON.parse(messageContent);
+                    console.log(" [x] Recebido:");
 
                     const newAlert = new Alert(alertData);
 
