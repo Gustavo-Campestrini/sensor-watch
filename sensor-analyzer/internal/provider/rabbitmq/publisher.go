@@ -14,12 +14,12 @@ func NewPublisher(ch *amqp091.Channel) Publisher {
 
 func (p *publisher) Publish(topic string, data []byte) error {
 	return p.channel.Publish(
-		topic,
 		"",
+		topic,
 		false,
 		false,
 		amqp091.Publishing{
-			ContentType: "text/plain",
+			ContentType: "application/json",
 			Body:        data,
 		},
 	)
