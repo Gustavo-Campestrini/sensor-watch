@@ -32,11 +32,3 @@ networks:
   app_network:
     driver: bridge
 
-mongodb-worker:
-    build: ./mongodb-worker # Diz ao Docker para construir a imagem a partir da pasta 'mongodb-worker'
-    container_name: mongodb-worker
-    depends_on: # O worker depende tanto do RabbitMQ quanto do MongoDB
-      - rabbitmq
-      - mongodb
-    networks:
-      - app_network
