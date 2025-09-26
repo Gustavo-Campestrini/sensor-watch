@@ -4,17 +4,16 @@ const mongoose = require('mongoose');
 
 const rabbitmqUrl = process.env.RABBITMQ_URL;
 const mongoUrl    = process.env.MONGO_URL;
-const queueName   = 'alerts'; 
+const queueName   = 'alerts.log'; 
 
 const alertSchema = new mongoose.Schema({
-    type: String,    
-    value: Number,    
-    place: String, 
+    type      : String,    
+    value    : Number,    
+    place    : String, 
     timestamp: { type: Date, default: Date.now }, 
 });
 
 const Alert = mongoose.model('Alert', alertSchema);
-
 
 async function startWorker() {
     try {
@@ -26,16 +25,13 @@ async function startWorker() {
         console.log("Conectado ao RabbitMQ com sucesso.");
 
         await channel.assertQueue(queueName, { durable: true });
-
         console.log(`[*] Aguardando mensagens na fila '${queueName}'. Para sair, pressione CTRL+C`);
 
         channel.consume(queueName, async (msg) => {
-
             if (msg !== null) {
                 try {
                     const messageContent = msg.content.toString();
                     const alertData = JSON.parse(messageContent);
-                    console.log(" [x] Recebido:");
 
                     const newAlert = new Alert(alertData);
 

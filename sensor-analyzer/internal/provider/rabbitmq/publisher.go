@@ -14,8 +14,8 @@ func NewPublisher(ch *amqp091.Channel) Publisher {
 
 func (p *publisher) Publish(topic string, data []byte) error {
 	return p.channel.Publish(
-		"",
 		topic,
+		"",
 		false,
 		false,
 		amqp091.Publishing{
