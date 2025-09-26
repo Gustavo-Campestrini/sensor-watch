@@ -10,6 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "amqplib": "^0.10.9",
-    "mongoose": "^8.18.1"
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mongoose": "^8.18.1",
+    "socket.io": "^4.8.1"
   }
 }

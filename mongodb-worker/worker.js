@@ -4,16 +4,29 @@ const mongoose = require('mongoose');
 
 const rabbitmqUrl = process.env.RABBITMQ_URL;
 const mongoUrl    = process.env.MONGO_URL;
-const queueName   = 'alerts.log'; 
+
+const mainQueue   = 'alerts.log';
+const retryQueue  = 'alerts.log.retry';
+const deadLetterQueue = 'alerts.log.dead-letter';
+const dlxName     = 'alerts.log.dlx'; 
+
+const MAX_RETRIES = 3;    
+
 
 const alertSchema = new mongoose.Schema({
-    type      : String,    
-    value    : Number,    
-    place    : String, 
-    timestamp: { type: Date, default: Date.now }, 
+    type      : String,
+    value    : Number,
+    place    : String,
+    timestamp: { type: Date, default: Date.now },
 });
-
 const Alert = mongoose.model('Alert', alertSchema);
+
+async function publishToQueue(channel, queue, msg) {
+    const originalContent = msg.content.toString();
+    console.log(`[!] Movendo mensagem para a fila '${queue}'.`);
+    channel.sendToQueue(queue, Buffer.from(originalContent), { persistent: true });
+}
+
 
 async function startWorker() {
     try {
@@ -24,35 +37,63 @@ async function startWorker() {
         const channel = await connection.createChannel();
         console.log("Conectado ao RabbitMQ com sucesso.");
 
-        await channel.assertQueue(queueName, { durable: true });
-        console.log(`[*] Aguardando mensagens na fila '${queueName}'. Para sair, pressione CTRL+C`);
 
-        channel.consume(queueName, async (msg) => {
-            if (msg !== null) {
+        await channel.assertExchange(dlxName, 'direct', { durable: true });
+        await channel.assertQueue(deadLetterQueue, { durable: true });
+        await channel.bindQueue(deadLetterQueue, dlxName, 'dead-letter');
+        await channel.bindQueue(retryQueue, dlxName, 'retry');
+
+        console.log(`[*] Aguardando mensagens na fila '${mainQueue}'.`);
+
+        channel.consume(mainQueue, async (msg) => {
+            if (msg === null) return;
+
+            try {
+
+                const headers = msg.properties.headers || {};
+                const retryCount = headers['x-retry-count'] || 0;
+
+                const messageContent = msg.content.toString();
+                const alertData = JSON.parse(messageContent);
+
+                const newAlert = new Alert(alertData);
+                await newAlert.save();
+
+                if (retryCount > 0) {
+                    console.log(` [✔] Alerta salvo no MongoDB após ${retryCount} tentativa(s) de retry.`);
+                } else {
+                    console.log(" [✔] Alerta salvo no MongoDB (Primeira Tentativa).");
+                }
+                
+                channel.ack(msg);
+
+            } catch (error) {
+                console.error("Erro ao processar mensagem:", error.message);
+                
                 try {
-                    const messageContent = msg.content.toString();
-                    const alertData = JSON.parse(messageContent);
+                    const headers = msg.properties.headers || {};
+                    const retryCount = (headers['x-retry-count'] || 0) + 1;
 
-                    const newAlert = new Alert(alertData);
+                    if (retryCount > MAX_RETRIES) {
+                        console.error(`[!] Mensagem excedeu ${MAX_RETRIES} tentativas. Enviando para a fila de erros.`);
+                        await publishToQueue(channel, deadLetterQueue, msg);
+                    } else {
+                        console.log(`[!] Tentativa ${retryCount} de ${MAX_RETRIES}. Reagendando...`);
+                        headers['x-retry-count'] = retryCount;
+                        channel.sendToQueue(retryQueue, msg.content, { headers });
+                    }
 
-                    await newAlert.save();
-                    console.log(" [✔] Alerta salvo no MongoDB.");
-
-                    // Confirma o processamento da mensagem para removê-la da fila 
                     channel.ack(msg);
 
-                } catch (error) {
-                    console.error("Erro ao processar mensagem:", error.message);
-                    // a mensagem é rejeitada (nack) e não será removida da fila,
-                    // permitindo que seja reprocessada ou enviada para uma DLQ, conforme a configuração do RabbitMQ.
-                    channel.nack(msg, false, false); // O terceiro `false` evita que ela volte para a mesma fila imediatamente.
+                } catch (publishError) {
+                    console.error("Erro CRÍTICO ao tentar mover mensagem para retry/dead-letter:", publishError);
+                    channel.nack(msg, false, false);
                 }
             }
         }, { noAck: false });
 
     } catch (error) {
         console.error("Falha ao iniciar o worker:", error);
-        // Tenta reiniciar o worker após um tempo em caso de falha na conexão inicial
         setTimeout(startWorker, 5000);
     }
 }
