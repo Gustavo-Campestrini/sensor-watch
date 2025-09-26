@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -18,6 +19,39 @@ type SensorData struct {
 }
 
 func main() {
+	var sensorType string
+	var place string
+
+	fmt.Println("Escolha o tipo de sensor para simulação:")
+	fmt.Println("1 - Temperatura")
+	fmt.Println("2 - Pressão")
+	fmt.Println("3 - Vibração")
+	fmt.Print("Digite o número da opção: ")
+
+	var opcao int
+	_, err := fmt.Scanln(&opcao)
+	if err != nil {
+		log.Fatalf("Erro ao ler a entrada: %s", err)
+	}
+
+	switch opcao {
+	case 1:
+		sensorType = "temperature"
+	case 2:
+		sensorType = "pressure"
+	case 3:
+		sensorType = "vibration"
+	default:
+		log.Fatalf("Opção inválida: %d", opcao)
+	}
+
+	fmt.Print("Digite o local do sensor (ex: salaX, salaY): ")
+	_, err = fmt.Scanln(&place)
+	if err != nil {
+		log.Fatalf("Erro ao ler o local: %s", err)
+	}
+	place = strings.TrimSpace(place)
+
 	conn, err := amqp091.Dial("amqps://hgmyguwa:Sg7aBCRxSyhg-LAjaDVZBF98UBSEcNww@jaragua.lmq.cloudamqp.com/hgmyguwa")
 	if err != nil {
 		log.Fatalf("Erro ao conectar RabbitMQ: %s", err)
@@ -42,14 +76,14 @@ func main() {
 		log.Fatalf("Erro ao declarar fila: %s", err)
 	}
 
-	fmt.Println("Produtor pronto! Enviando mensagens...")
+	fmt.Printf("Sensor de '%s' em '%s' pronto! Enviando mensagens...\n", sensorType, place)
 
 	for {
 		data := SensorData{
-			SensorType: "temperature",
-			Value:      45 + rand.Float64()*10, //Temperatura
+			SensorType: sensorType,
+			Value:      gerarValorAleatorio(sensorType),
 			Timestamp:  time.Now().Format(time.RFC3339),
-			Place:      "jaragua",
+			Place:      place,
 		}
 
 		body, err := json.Marshal(data)
@@ -75,5 +109,18 @@ func main() {
 		}
 
 		time.Sleep(2 * time.Second)
+	}
+}
+
+func gerarValorAleatorio(sensor string) float64 {
+	switch sensor {
+	case "temperature":
+		return 45 + rand.Float64()*10
+	case "pressure":
+		return 900 + rand.Float64()*200
+	case "vibration":
+		return rand.Float64() * 5
+	default:
+		return 0
 	}
 }
