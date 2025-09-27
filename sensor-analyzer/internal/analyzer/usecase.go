@@ -27,15 +27,40 @@ func (a *analyzerUsecase) Analyze(msg []byte) {
 		return
 	}
 
-	log.Printf("Analisando sensor: %.2f°C", sensorData.Value)
+	unit := ""
+	alertThreshold := 0.0
+	shouldAlert := false
 
-	body, err := json.Marshal(sensorData)
-	if err != nil {
-		log.Printf("Erro ao converter JSON: %s", err)
+	switch sensorData.SensorType {
+	case "temperature":
+		unit = "°C"
+		alertThreshold = 50
+		shouldAlert = sensorData.Value > alertThreshold
+
+	case "pressure":
+		unit = "hPa"
+		alertThreshold = 1050
+		shouldAlert = sensorData.Value > alertThreshold
+
+	case "vibration":
+		unit = "m/s²"
+		alertThreshold = 3.0
+		shouldAlert = sensorData.Value > alertThreshold
+
+	default:
+		log.Printf("Tipo de sensor desconhecido: %s", sensorData.SensorType)
 		return
 	}
 
-	if sensorData.Value > 50 {
+	log.Printf("Analisando sensor (%s) em %s: %.2f %s", sensorData.SensorType, sensorData.Place, sensorData.Value, unit)
+
+	if shouldAlert {
+		body, err := json.Marshal(sensorData)
+		if err != nil {
+			log.Printf("Erro ao converter JSON: %s", err)
+			return
+		}
+
 		if err := a.Publisher.Publish("alerts", body); err != nil {
 			log.Printf("Erro ao enviar alerta: %s", err)
 		}
