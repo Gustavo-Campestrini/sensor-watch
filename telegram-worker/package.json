@@ -1,0 +1,16 @@
+{
+  "name": "telegram-worker",
+  "version": "1.0.0",
+  "description": "Responsável por enviar alertas para o Telegram",
+  "main": "src/worker.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/worker.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "amqplib": "^0.10.9",
+    "dotenv": "^17.2.2"
+  }
+}

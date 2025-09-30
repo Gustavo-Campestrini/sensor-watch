@@ -1,0 +1,17 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+
+module.exports = {
+  RABBITMQ_URL: process.env.RABBITMQ_URL,
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
+  
+  ALERTS_EXCHANGE: process.env.ALERTS_EXCHANGE || 'alerts',
+
+  ALERT_NOTIFICATION_QUEUE: process.env.ALERT_NOTIFICATION_QUEUE || 'alerts.notification2',
+
+  ALERT_RETRY_QUEUE: process.env.ALERT_RETRY_QUEUE || 'alerts.retry',
+  ALERT_RETRY_DLX: process.env.ALERT_RETRY_DLX || 'alerts.retry-dlx',
+
+  TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || 'MarkdownV2',
+};
