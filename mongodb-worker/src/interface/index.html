@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Alertas (Tempo Real)</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f4; }
+        table { width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #28a745; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .new-log { background-color: #d4edda !important; transition: background-color 1s; }
+    </style>
+</head>
+<body>
+    <h1>Logs de Alertas - Tempo Real</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Tipo</th>
+                <th>Lugar</th>
+                <th>Valor</th>
+            </tr>
+        </thead>
+        <tbody id="logs-table-body"></tbody>
+    </table>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const tableBody = document.getElementById('logs-table-body');
+        const socket = io('http://localhost:3000');
+
+        function addLogRow(log, atTop = false) {
+            const row = document.createElement('tr');
+            const formattedDate = new Date(log.timestamp).toLocaleString('pt-BR');
+
+            row.innerHTML = `
+                <td>${formattedDate}</td>
+                <td>${log.type}</td>
+                <td>${log.place}</td>
+                <td>${log.value}</td>
+            `;
+
+            if (atTop) {
+                tableBody.prepend(row); 
+                row.classList.add('new-log');
+                setTimeout(() => row.classList.remove('new-log'), 2000);
+            } else {
+                tableBody.appendChild(row); 
+            }
+        }
+
+        socket.on('initial-alerts', (logs) => {
+            tableBody.innerHTML = '';
+            logs.forEach(log => addLogRow(log, false));
+        });
+
+        socket.on('new-alert', (newAlert) => {
+            console.log('Novo alerta recebido!', newAlert);
+            addLogRow(newAlert, true); 
+        });
+
+    </script>
+</body>
+</html>
