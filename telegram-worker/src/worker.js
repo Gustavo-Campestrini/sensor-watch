@@ -51,7 +51,7 @@ async function handleMessage(channel, msg) {
   const retryCount = headers['x-retry-count'] || 0;
 
   try {
-    await sendTelegramMessage(fodrmatted);
+    await sendTelegramMessage(formatted);
     console.log(`Alerta enviado com sucesso na tentativa #${retryCount}`)
     await sleep(500); 
     channel.ack(msg);
