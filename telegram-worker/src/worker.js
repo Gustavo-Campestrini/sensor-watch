@@ -4,11 +4,7 @@ const config = require('./config/config.js');
 const { sendTelegramMessage } = require('./service/telegram.js');
 const { parseMessageContent } = require('./utils/messageParser.js');
 
-/**
- * Pausa a execução por um determinado número de milissegundos.
- * @param {number} ms - O tempo de espera em milissegundos.
- * @returns {Promise<void>} Uma promessa que resolve após o tempo especificado.
- */
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 if (!config.TELEGRAM_BOT_TOKEN || !config.TELEGRAM_CHAT_ID) {
@@ -18,18 +14,12 @@ if (!config.TELEGRAM_BOT_TOKEN || !config.TELEGRAM_CHAT_ID) {
 async function setupRabbitMQ(channel) {
   await channel.assertExchange(config.ALERTS_EXCHANGE, 'fanout', { durable: true });
   await channel.assertQueue(config.ALERT_NOTIFICATION_QUEUE, { durable: true });
-  await channel.assertQueue(config.ALERT_RETRY_QUEUE, { durable: true }); // Garante que a fila de retry existe
+  await channel.assertQueue(config.ALERT_RETRY_QUEUE, { durable: true }); 
   await channel.bindQueue(config.ALERT_NOTIFICATION_QUEUE, config.ALERTS_EXCHANGE, '');
   await channel.prefetch(1);
   return config.ALERT_NOTIFICATION_QUEUE;
 }
 
-/**
- * Encaminha uma mensagem com falha para a fila de retentativas (retry).
- * @param {import('amqplib').Channel} channel - O canal do RabbitMQ.
- * @param {import('amqplib').ConsumeMessage} msg - A mensagem original que falhou.
- * @returns {Promise<boolean>} Retorna `true` se a mensagem foi encaminhada com sucesso, `false` caso contrário.
- */
 async function forwardToRetryQueue(channel, msg) {
   console.warn(`Encaminhando mensagem para a fila de retry: ${config.ALERT_RETRY_QUEUE}`);
   try {
@@ -44,24 +34,20 @@ async function forwardToRetryQueue(channel, msg) {
   }
 }
 
-/**
- * Processa uma única mensagem recebida da fila de notificações.
- * Tenta enviar a mensagem formatada para o Telegram. Em caso de falha,
- * encaminha para a fila de retentativa.
- * @param {import('amqplib').Channel} channel - O canal do RabbitMQ.
- * @param {import('amqplib').ConsumeMessage} msg - A mensagem a ser processada.
- * @returns {Promise<void>}
- */
+
 async function handleMessage(channel, msg) {
   const { formatted } = parseMessageContent(msg);
 
+  const headers = msg.properties.headers || {};
+  const retryCount = headers['x-retry-count'] || 0;
+
   try {
     await sendTelegramMessage(formatted);
-    console.log("Alerta enviado com sucesso.");
+    console.log(`Alerta enviado com sucesso na tentativa #${retryCount}`)
     await sleep(500); 
     channel.ack(msg);
   } catch (error) {
-    console.error(`Falha ao enviar para o Telegram: ${error.message}`);
+    console.error(`Falha ao enviar para o Telegram na tentativa ${retryCount}: ${error.message}`);
     const forwarded = await forwardToRetryQueue(channel, msg);
     if (forwarded) {
       channel.ack(msg);

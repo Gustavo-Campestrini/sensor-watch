@@ -1,6 +1,7 @@
 require('dotenv').config();
 const amqp = require('amqplib');
 const config = require('./config/config.js');
+const MAX_RETRIES = 3
 
 /**
  * Processa uma mensagem da fila de retentativas.
@@ -14,16 +15,14 @@ async function handleRetryMessage(channel, msg) {
   const headers = msg.properties.headers || {};
   const retryCount = (headers['x-retry-count'] || 0) + 1;
   
-  console.log(`[Retry-Service] Mensagem recebida. Tentativa #${retryCount} de ${config.MAX_RETRIES}`);
+  console.log(`[Retry-Service] Mensagem recebida. Tentativa #${retryCount} de ${MAX_RETRIES}`);
 
-  if (retryCount <= config.MAX_RETRIES) {
+  if (retryCount <= MAX_RETRIES) {
     console.log(`[Retry-Service] Reenviando para a exchange '${config.ALERTS_EXCHANGE}'...`);
     const newHeaders = { ...headers, 'x-retry-count': retryCount };
-    // Publica de volta na exchange principal para ser reprocessada pelos workers originais
     channel.publish(config.ALERTS_EXCHANGE, '', msg.content, { headers: newHeaders });
   } else {
     console.warn(`[Retry-Service] Limite de tentativas atingido. Enviando para a DLQ final.`);
-    // Publica na exchange de falhas permanentes
     channel.publish(config.ALERT_FINAL_DLX, '', msg.content, { headers });
   }
 
