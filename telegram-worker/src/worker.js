@@ -20,12 +20,21 @@ async function setupRabbitMQ(channel) {
   return config.ALERT_NOTIFICATION_QUEUE;
 }
 
-async function forwardToRetryQueue(channel, msg) {
+async function forwardToRetryQueue(channel, msg, error) {
   console.warn(`Encaminhando mensagem para a fila de retry: ${config.ALERT_RETRY_QUEUE}`);
+  
   try {
+    const originalHeaders = msg.properties.headers || {};
+    const newHeaders = {
+      ...originalHeaders,
+      'x-source-service': 'telegram-worker', 
+      'x-failure-reason': error.message,    
+      'x-failure-timestamp': new Date().toISOString() 
+    };
+
     channel.sendToQueue(config.ALERT_RETRY_QUEUE, msg.content, { 
       persistent: true, 
-      headers: msg.properties.headers 
+      headers: newHeaders 
     });
     return true;
   } catch (forwardError) {
@@ -42,13 +51,13 @@ async function handleMessage(channel, msg) {
   const retryCount = headers['x-retry-count'] || 0;
 
   try {
-    await sendTelegramMessage(formatted);
+    await sendTelegramMessage(fodrmatted);
     console.log(`Alerta enviado com sucesso na tentativa #${retryCount}`)
     await sleep(500); 
     channel.ack(msg);
   } catch (error) {
     console.error(`Falha ao enviar para o Telegram na tentativa ${retryCount}: ${error.message}`);
-    const forwarded = await forwardToRetryQueue(channel, msg);
+    const forwarded = await forwardToRetryQueue(channel, msg, error);
     if (forwarded) {
       channel.ack(msg);
     } else {
@@ -57,20 +66,12 @@ async function handleMessage(channel, msg) {
   }
 }
 
-/**
- * Função principal que inicializa e executa o worker.
- * Conecta-se ao RabbitMQ, configura o canal, define o consumidor
- * e gerencia o ciclo de vida do processo.
- * @returns {Promise<void>}
- */
+
 async function start() {
   let connection;
   let channel;
 
-  /**
-   * Encerra as conexões com o RabbitMQ de forma graciosa e finaliza o processo.
-   * @param {number} [code=0] - O código de saída do processo.
-   */
+  
   const shutdown = async (code = 0) => {
     try {
       if (channel) await channel.close();
