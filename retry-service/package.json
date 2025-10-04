@@ -2,5 +2,8 @@
   "dependencies": {
     "amqplib": "^0.10.9",
     "dotenv": "^17.2.2"
+  },
+  "scripts": {
+    "start": "node src/index.js"
   }
 }
