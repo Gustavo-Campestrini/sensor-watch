@@ -55,7 +55,6 @@ function startScheduler(channel) {
 }
 
 /**
- * Processa uma mensagem de retry aplicando políticas de delay, TTL e limite de tentativas.
  * @param {import('amqplib').Channel} channel
  * @param {import('amqplib').ConsumeMessage} msg
  */
@@ -65,17 +64,15 @@ async function handleRetryMessage(channel, msg) {
   const sourceService = headers['x-source-service'] || 'desconhecido';
 
   if (!headers['x-created-at']) {
-    headers['x-created-at'] = Date.now(); // primeira vez que passa pelo retry service
+    headers['x-created-at'] = Date.now();
   }
 
   if (retryCount <= config.MAX_RETRIES) {
     const newHeaders = { ...headers, 'x-retry-count': retryCount };
 
-    // Nova lógica: se houver header 'x-destination-queue', ele tem precedência
     let destinationQueue = headers['x-destination-queue'];
 
     if (!destinationQueue) {
-      // Fallback para modelo antigo baseado em 'x-source-service'
       switch (sourceService) {
         case 'mongodb-worker': destinationQueue = config.ALERT_LOG_QUEUE; break;
         case 'telegram-worker': destinationQueue = config.ALERT_NOTIFICATION_QUEUE; break;
@@ -88,11 +85,25 @@ async function handleRetryMessage(channel, msg) {
       return;
     }
 
-    const delays = config.RETRY_DELAYS_MS;
-    const delay = delays[Math.min(retryCount - 1, delays.length - 1)];
+    let delay;
+    if (Array.isArray(config.RETRY_DELAYS_MS) && config.RETRY_DELAYS_MS.length > 0 && config.RETRY_DELAYS_MS.some(v => v > 0)) {
+      delay = config.RETRY_DELAYS_MS[Math.min(retryCount - 1, config.RETRY_DELAYS_MS.length - 1)];
+    } else {
+      const base = config.BACKOFF_BASE_MS;
+      const factor = config.BACKOFF_FACTOR <= 1 ? 2 : config.BACKOFF_FACTOR; 
+      const raw = base * Math.pow(factor, retryCount - 1);
+      delay = Math.min(raw, config.BACKOFF_MAX_MS);
+      if (config.BACKOFF_JITTER_PCT > 0) {
+        const pct = config.BACKOFF_JITTER_PCT;
+        const variation = delay * pct;
+        const min = delay - variation;
+        const max = delay + variation;
+        delay = Math.max(0, Math.round(min + Math.random() * (max - min)));
+      }
+    }
     const retryAt = Date.now() + delay;
 
-    console.log(`[Retry] Tentativa #${retryCount} (delay ${delay}ms) -> '${destinationQueue}'.`);
+    console.log(`[Retry] Tentativa #${retryCount} (delay ${delay}ms${config.RETRY_DELAYS_MS.length ? ' / tabela' : ' / exponencial'}) -> '${destinationQueue}'.`);
     scheduledMessages.push({
       destinationQueue,
       content: msg.content,
