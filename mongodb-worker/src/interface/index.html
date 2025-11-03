@@ -4,49 +4,171 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Alertas (Tempo Real)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f4; }
-        table { width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
-        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
-        th { background-color: #28a745; color: white; }
-        tr:nth-child(even) { background-color: #f2f2f2; }
-        .new-log { background-color: #d4edda !important; transition: background-color 1s; }
+        :root {
+            --primary-color: #007bff; /* Azul primário */
+            --secondary-color: #6c757d; 
+            --bg-dark: #1f283e; /* Fundo escuro do painel */
+            --bg-light: #ffffff; /* Fundo de cards/tabela */
+            --success-color: #28a745;
+            --info-color: #17a2b8;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+        }
+
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            margin: 0; 
+            background-color: var(--bg-dark); 
+            color: #e9ecef; /* Texto claro no fundo escuro */
+            min-height: 100vh;
+        }
+
+        .dashboard-header {
+            background-color: var(--bg-light);
+            color: var(--bg-dark);
+            padding: 20px 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 30px; /* Adiciona espaço abaixo do cabeçalho */
+        }
+
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .content-wrapper {
+            padding: 0 30px 30px 30px;
+            max-width: 1400px;
+            margin: auto;
+        }
+
+        /* ESTILO DA TABELA DE LOGS */
+        .logs-section {
+            background-color: var(--bg-light);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            color: #333;
+            padding: 20px 0; /* Padding da seção, não da tabela */
+        }
+
+        .logs-section h2 {
+            padding: 0 20px 10px;
+            border-bottom: 1px solid #eee;
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+        }
+
+        th, td { 
+            padding: 15px 20px; 
+            border-bottom: 1px solid #f1f1f1; 
+            text-align: left; 
+        }
+
+        th { 
+            background-color: var(--primary-color); 
+            color: white; 
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }
+
+        tr:nth-child(even) { background-color: #f8f8f8; }
+        
+        /* EFEITO DE NOVO LOG */
+        .new-log { 
+            background-color: var(--warning-color) !important;
+            color: #333 !important;
+            font-weight: 600;
+            animation: pulse 0.8s ease-out;
+        }
+        .new-log.fade-out {
+            transition: background-color 1.5s ease-in-out, font-weight 1.5s, color 1.5s;
+            background-color: var(--bg-light) !important;
+            font-weight: 400;
+            color: #333;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+            100% { transform: scale(1); }
+        }
+
+        /* Estilos de cores para o tipo de alerta (Exemplo) */
+        .type-ALERT { color: var(--danger-color); font-weight: 600; }
+        .type-INFO { color: var(--info-color); }
+        .type-CRITICAL { color: var(--danger-color); font-weight: 700; }
+        .type-WARNING { color: var(--warning-color); font-weight: 600; }
+
     </style>
 </head>
 <body>
-    <h1>Logs de Alertas - Tempo Real</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Timestamp</th>
-                <th>Tipo</th>
-                <th>Lugar</th>
-                <th>Valor</th>
-            </tr>
-        </thead>
-        <tbody id="logs-table-body"></tbody>
-    </table>
+    <div class="dashboard-header">
+        <h1>Análise de Sensores - Logs em Tempo Real</h1>
+    </div>
+
+    <div class="content-wrapper">
+        <div class="logs-section">
+            <h2>Logs de Alertas</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Tipo</th>
+                            <th>Lugar</th>
+                            <th>Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
         const tableBody = document.getElementById('logs-table-body');
-        const socket = io('http://localhost:3000');
-
+        const socket = io('http://localhost:3000'); 
+        
         function addLogRow(log, atTop = false) {
             const row = document.createElement('tr');
             const formattedDate = new Date(log.timestamp).toLocaleString('pt-BR');
 
+            // Adiciona classe para estilizar a célula Tipo
+            const typeClass = `type-${log.type.toUpperCase()}`;
+
             row.innerHTML = `
                 <td>${formattedDate}</td>
-                <td>${log.type}</td>
+                <td class="${typeClass}">${log.type}</td>
                 <td>${log.place}</td>
                 <td>${log.value}</td>
             `;
 
             if (atTop) {
                 tableBody.prepend(row); 
+                
+                // Animação de destaque
                 row.classList.add('new-log');
-                setTimeout(() => row.classList.remove('new-log'), 2000);
+                setTimeout(() => {
+                    row.classList.add('fade-out');
+                }, 500); 
+
+                setTimeout(() => {
+                    row.classList.remove('new-log', 'fade-out');
+                }, 2000); // 2 segundos total para a animação
             } else {
                 tableBody.appendChild(row); 
             }
@@ -54,14 +176,14 @@
 
         socket.on('initial-alerts', (logs) => {
             tableBody.innerHTML = '';
-            logs.forEach(log => addLogRow(log, false));
+            // Inverte a ordem para mostrar o mais recente no topo
+            logs.reverse().forEach(log => addLogRow(log, false)); 
         });
 
         socket.on('new-alert', (newAlert) => {
             console.log('Novo alerta recebido!', newAlert);
             addLogRow(newAlert, true); 
         });
-
     </script>
 </body>
 </html>
