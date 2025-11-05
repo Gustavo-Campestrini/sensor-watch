@@ -1,34 +1,84 @@
 package rabbitmq
 
 import (
+	"log"
+
+	"github.com/google/uuid"
 	"github.com/rabbitmq/amqp091-go"
 )
 
-type consumer struct {
-	channel *amqp091.Channel
+// Consumer encapsula a lógica de consumo do RabbitMQ
+type Consumer struct {
+	ch   *amqp091.Channel
+	tag  string     // Tag única para este consumer
+	done chan error // Canal para sinalizar parada
 }
 
-func NewConsumer(ch *amqp091.Channel) Consumer {
-	return &consumer{channel: ch}
+func NewConsumer(ch *amqp091.Channel) *Consumer {
+	return &Consumer{
+		ch:   ch,
+		done: make(chan error),
+		// Geramos uma tag única para poder cancelar este consumer específico
+		tag: "consumer-" + uuid.New().String(),
+	}
 }
 
-func (c *consumer) Consume(topic string) (<-chan []byte, error) {
-	q, err := c.channel.QueueDeclare(topic, true, false, false, false, nil)
+// Start consome a fila e entrega mensagens para um canal de callback.
+// Esta função NÃO bloqueia.
+func (c *Consumer) Start(queueName string, onMessage func(msg []byte)) error {
+	log.Printf("[Consumer %s] Iniciando consumo da fila %s", c.tag, queueName)
+
+	msgs, err := c.ch.Consume(
+		queueName,
+		c.tag, // consumerTag
+		false, // autoAck
+		false, // exclusive
+		false, // noLocal
+		false, // noWait
+		nil,   // args
+	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	msgs, err := c.channel.Consume(q.Name, "", true, false, false, false, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	ch := make(chan []byte)
+	// Goroutine para processar mensagens
 	go func() {
-		for m := range msgs {
-			ch <- m.Body
+		for {
+			select {
+			case <-c.done: // Sinal de parada
+				log.Printf("[Consumer %s] Parando consumo", c.tag)
+				return
+			case d, ok := <-msgs:
+				if !ok {
+					log.Printf("[Consumer %s] Canal de mensagens fechado", c.tag)
+					c.done <- nil // Sinaliza que parou
+					return
+				}
+				// Executa o callback (a análise)
+				onMessage(d.Body)
+				// Confirma a mensagem
+				d.Ack(false)
+			}
 		}
-		close(ch)
 	}()
-	return ch, nil
+
+	return nil
+}
+
+// Stop pára o consumer elegantemente
+func (c *Consumer) Stop() error {
+	log.Printf("[Consumer %s] Enviando sinal de parada...", c.tag)
+	if err := c.ch.Cancel(c.tag, false); err != nil {
+		log.Printf("[Consumer %s] Erro ao cancelar: %s", c.tag, err)
+		return err
+	}
+
+	// Envia um sinal no canal done (caso o Cancel não feche o 'msgs' imediatamente)
+	// Usamos um select para não bloquear se já estiver fechado
+	select {
+	case c.done <- nil:
+	default:
+	}
+
+	return nil
 }
