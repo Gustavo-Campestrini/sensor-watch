@@ -5,8 +5,8 @@ const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require("socket.io");
 
-const mongoUrl = "mongodb+srv://workerjs:rWjHdj53F7lzADbq@cluster0.zhwrc7g.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const PORT = 3000;
+const mongoUrl = process.env.MONGO_URL || "mongodb+srv://workerjs:rWjHdj53F7lzADbq@cluster0.zhwrc7g.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const PORT = 4000;
 
 const app = express();
 app.use(cors());

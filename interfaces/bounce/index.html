@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração de Limites (Thresholds)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff; 
+            --primary-color-dark: #0056b3; 
+            --bg-dark: #f4f7f9; 
+            --bg-light: #ffffff; 
+            --text-dark: #333333;
+            --text-light: #1f1f1f; 
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            --border-color: #dee2e6;
+        }
+
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            margin: 0; 
+            background-color: var(--bg-dark); 
+            color: var(--text-dark);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 50px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: var(--text-dark);
+        }
+
+        .header h1 {
+            font-weight: 700;
+            color: var(--primary-color);
+            border-bottom: 3px solid var(--primary-color);
+            display: inline-block;
+            padding-bottom: 5px;
+        }
+
+        .threshold-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background-color: var(--bg-light);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            padding: 30px;
+            border-left: 5px solid var(--primary-color);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); 
+        }
+
+        .card h3 {
+            margin-top: 0;
+            font-weight: 600;
+            font-size: 1.5rem;
+            color: var(--text-light); 
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-transform: capitalize;
+        }
+
+        .card i {
+            color: var(--primary-color);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            background-color: var(--bg-light); 
+            color: var(--text-dark);
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25); 
+            outline: none;
+        }
+
+        .save-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-top: 15px;
+        }
+
+        .save-btn:hover {
+            background-color: var(--primary-color-dark); 
+        }
+
+        .feedback {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .feedback.success {
+            background-color: var(--success-color);
+            color: white;
+        }
+
+        .feedback.error {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-sliders-h"></i> Configuração de Limites de Sensores</h1>
+            <p>Defina os valores mínimo e máximo para cada sensor. As alterações serão salvas no MongoDB.</p>
+        </div>
+
+        <div class="threshold-cards" id="threshold-container">
+            </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api/thresholds';
+        const SENSORS = [
+            { id: 'vibration', name: 'Vibração', icon: 'fas fa-cogs', unit: 'Hz' },
+            { id: 'temperature', name: 'Temperatura', icon: 'fas fa-thermometer-half', unit: '°C' },
+            { id: 'pressure', name: 'Pressão', icon: 'fas fa-tachometer-alt', unit: 'PSI' }
+        ];
+
+        const container = document.getElementById('threshold-container');
+
+        function createCard(sensor, data) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <h3><i class="${sensor.icon}"></i> ${sensor.name}</h3>
+                <form data-sensor="${sensor.id}">
+                    <div class="input-group">
+                        <label for="${sensor.id}-upper">Limite Superior (${sensor.unit})</label>
+                        <input type="number" id="${sensor.id}-upper" name="upperLimit" value="${data.upperLimit}" required step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="${sensor.id}-lower">Limite Inferior (${sensor.unit})</label>
+                        <input type="number" id="${sensor.id}-lower" name="lowerLimit" value="${data.lowerLimit}" required step="0.01">
+                    </div>
+                    <button type="submit" class="save-btn">Salvar ${sensor.name}</button>
+                    <div id="${sensor.id}-feedback" class="feedback" style="display:none;"></div>
+                </form>
+            `;
+            return card;
+        }
+
+        async function loadThresholds() {
+            try {
+                const response = await fetch(API_BASE_URL);
+                if (!response.ok) throw new Error('Erro ao carregar dados da API');
+                
+                const thresholdsData = await response.json();
+                
+                const dataMap = thresholdsData.reduce((acc, curr) => {
+                    acc[curr.sensor] = curr;
+                    return acc;
+                }, {});
+
+                container.innerHTML = '';
+                
+                SENSORS.forEach(sensor => {
+                    const data = dataMap[sensor.id] || { upperLimit: 0, lowerLimit: 0, unit: sensor.unit };
+                    const card = createCard(sensor, data);
+                    container.appendChild(card);
+                });
+
+                document.querySelectorAll('.card form').forEach(form => {
+                    form.addEventListener('submit', handleFormSubmit);
+                });
+
+            } catch (error) {
+                console.error("Erro no carregamento inicial:", error);
+                container.innerHTML = `<p class="feedback error" style="color: white; background-color: var(--danger-color);">Falha ao carregar configurações: ${error.message}. Verifique se o servidor Node.js (Porta 3000) está rodando.</p>`;
+            }
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            const form = event.target;
+            const sensorId = form.dataset.sensor;
+            const feedbackElement = document.getElementById(`${sensorId}-feedback`);
+            feedbackElement.style.display = 'none';
+
+            const upperLimit = parseFloat(form.elements.upperLimit.value);
+            const lowerLimit = parseFloat(form.elements.lowerLimit.value);
+            const sensorData = SENSORS.find(s => s.id === sensorId);
+            
+            if (isNaN(upperLimit) || isNaN(lowerLimit) || upperLimit < lowerLimit) {
+                showFeedback(feedbackElement, 'Erro: Limite superior deve ser maior que o inferior e ambos devem ser números.', 'error');
+                return;
+            }
+
+            const data = {
+                sensor: sensorId,
+                upperLimit: upperLimit,
+                lowerLimit: lowerLimit,
+                unit: sensorData.unit
+            };
+
+            try {
+                const response = await fetch(API_BASE_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) throw new Error('Falha na API ao salvar dados.');
+
+                showFeedback(feedbackElement, 'Limites salvos com sucesso!', 'success');
+
+            } catch (error) {
+                console.error("Erro ao salvar:", error);
+                showFeedback(feedbackElement, 'Erro ao salvar: ' + error.message, 'error');
+            }
+        }
+
+        function showFeedback(element, message, type) {
+            element.textContent = message;
+            element.className = `feedback ${type}`;
+            element.style.display = 'block';
+
+            setTimeout(() => {
+                element.style.display = 'none';
+            }, 1500);
+        }
+
+        loadThresholds();
+
+    </script>
+</body>
+</html>
