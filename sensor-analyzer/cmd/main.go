@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"sensor-analyzer/config"
 	"sensor-analyzer/internal/analyzer"
@@ -10,15 +11,28 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/rabbitmq/amqp091-go"
 )
+
+func startMetricsServer(port string, nodeID int) {
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		addr := ":" + port
+		log.Printf("[Nó %d] Servidor de Métricas rodando em http://localhost:%s/metrics", nodeID, port)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			log.Fatalf("[Nó %d] Erro ao iniciar servidor de métricas: %s", nodeID, err)
+		}
+	}()
+}
 
 func main() {
 	cfg := config.Load()
 
 	args := os.Args[1:]
-	if len(args) != 3 {
-		log.Fatalf("Uso: go run ./cmd <id> <my_addr> <all_ring_addrs_comma_separated>")
+	if len(args) != 4 {
+		log.Fatalf("Uso: go run ./cmd <id> <my_addr> <all_ring_addrs_comma_separated> <metrics_port>")
 	}
 
 	id, err := strconv.Atoi(args[0])
@@ -26,11 +40,15 @@ func main() {
 		log.Fatalf("ID inválido: %s", args[0])
 	}
 	myAddr := args[1]
-
 	ringAddrs := strings.Split(args[2], ",")
+
+	metricsPort := args[3]
+
 	if len(ringAddrs) < 2 {
 		log.Fatalf("O anel deve ter pelo menos 2 nós.")
 	}
+
+	startMetricsServer(metricsPort, id)
 
 	log.Printf("=== INICIANDO SENSOR-ANALYZER [NÓ %d] ===", id)
 	log.Printf("Meu Endereço: %s | Anel Completo: %v", myAddr, ringAddrs)

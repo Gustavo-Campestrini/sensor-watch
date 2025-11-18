@@ -5,6 +5,18 @@ import (
 	"fmt"
 	"log"
 	"sensor-analyzer/internal/provider/rabbitmq"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var sensorValueGauge = promauto.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "sensor_analyzer_value",
+		Help: "Valor atual do sensor analisado.",
+	},
+	[]string{"sensor_type"},
+	// []string{"sensor_type", "place", "status"},
 )
 
 type analyzerUsecase struct {
@@ -30,6 +42,7 @@ func (a *analyzerUsecase) Analyze(msg []byte) {
 	unit := ""
 	alertThreshold := 0.0
 	shouldAlert := false
+	// status := "ok" //
 
 	switch sensorData.SensorType {
 	case "temperature":
@@ -51,6 +64,16 @@ func (a *analyzerUsecase) Analyze(msg []byte) {
 		log.Printf("Tipo de sensor desconhecido: %s", sensorData.SensorType)
 		return
 	}
+
+	if shouldAlert {
+		// status = "falha" // <-- ADICIONADO: atualiza status se for alerta
+	}
+
+	sensorValueGauge.WithLabelValues(
+		sensorData.SensorType,
+		// sensorData.Place,
+		// status, // "ok" ou "falha"
+	).Set(sensorData.Value)
 
 	log.Printf("Analisando sensor (%s) em %s: %.2f %s", sensorData.SensorType, sensorData.Place, sensorData.Value, unit)
 
