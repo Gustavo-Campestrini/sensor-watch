@@ -16,8 +16,13 @@ var sensorValueGauge = promauto.NewGaugeVec(
 		Help: "Valor atual do sensor analisado.",
 	},
 	[]string{"sensor_type"},
-	// []string{"sensor_type", "place", "status"},
 )
+
+var sensorRules = map[string]Threshold{
+	"temperature": {UpperLimit: 40, LowerLimit: 10, Unit: "°C"},
+	"pressure":    {UpperLimit: 100, LowerLimit: 50, Unit: "PSI"},
+	"vibration":   {UpperLimit: 10, LowerLimit: 1, Unit: "Hz"},
+}
 
 type analyzerUsecase struct {
 	Publisher rabbitmq.Publisher
@@ -34,59 +39,43 @@ func (a *analyzerUsecase) Analyze(msg []byte) {
 		Timestamp  string  `json:"timestamp"`
 		Place      string  `json:"place"`
 	}
+
 	if err := json.Unmarshal(msg, &sensorData); err != nil {
 		log.Printf("Erro ao decodificar sensor: %s", err)
 		return
 	}
 
-	unit := ""
-	alertThreshold := 0.0
-	shouldAlert := false
-	// status := "ok" //
-
-	switch sensorData.SensorType {
-	case "temperature":
-		unit = "°C"
-		alertThreshold = 50
-		shouldAlert = sensorData.Value > alertThreshold
-
-	case "pressure":
-		unit = "hPa"
-		alertThreshold = 1050
-		shouldAlert = sensorData.Value > alertThreshold
-
-	case "vibration":
-		unit = "m/s²"
-		alertThreshold = 3.0
-		shouldAlert = sensorData.Value > alertThreshold
-
-	default:
+	rules, found := sensorRules[sensorData.SensorType]
+	if !found {
 		log.Printf("Tipo de sensor desconhecido: %s", sensorData.SensorType)
 		return
 	}
 
-	if shouldAlert {
-		// status = "falha" // <-- ADICIONADO: atualiza status se for alerta
-	}
+	shouldAlert := sensorData.Value > rules.UpperLimit || sensorData.Value < rules.LowerLimit
 
-	sensorValueGauge.WithLabelValues(
+	sensorValueGauge.WithLabelValues(sensorData.SensorType).Set(sensorData.Value)
+
+	log.Printf(
+		"Sensor %s (%s): %.2f %s (range: %.2f - %.2f)",
 		sensorData.SensorType,
-		// sensorData.Place,
-		// status, // "ok" ou "falha"
-	).Set(sensorData.Value)
-
-	log.Printf("Analisando sensor (%s) em %s: %.2f %s", sensorData.SensorType, sensorData.Place, sensorData.Value, unit)
+		sensorData.Place,
+		sensorData.Value,
+		rules.Unit,
+		rules.LowerLimit,
+		rules.UpperLimit,
+	)
 
 	if shouldAlert {
 		body, err := json.Marshal(sensorData)
 		if err != nil {
-			log.Printf("Erro ao converter JSON: %s", err)
+			log.Printf("Erro ao serializar alerta: %s", err)
 			return
 		}
 
 		if err := a.Publisher.Publish("alerts", body); err != nil {
 			log.Printf("Erro ao enviar alerta: %s", err)
 		}
-		fmt.Printf("Mensagem enviada: %s\n", string(body))
+
+		fmt.Printf("ALERTA enviado: %s\n", string(body))
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -10,14 +11,15 @@ import (
 	"sensor-analyzer/internal/provider/rabbitmq"
 	"strconv"
 	"strings"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func startMetricsServer(port string, nodeID int) {
-	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := ":" + port
 		log.Printf("[Nó %d] Servidor de Métricas rodando em http://localhost:%s/metrics", nodeID, port)
@@ -25,6 +27,44 @@ func startMetricsServer(port string, nodeID int) {
 			log.Fatalf("[Nó %d] Erro ao iniciar servidor de métricas: %s", nodeID, err)
 		}
 	}()
+}
+
+func NewMongoClient(uri string) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func StartMongoWatcher(ctx context.Context, collection *mongo.Collection, handler func(event map[string]interface{})) error {
+	stream, err := collection.Watch(ctx, mongo.Pipeline{})
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer stream.Close(ctx)
+
+		for stream.Next(ctx) {
+			var event map[string]interface{}
+			if err := stream.Decode(&event); err != nil {
+				log.Println("Erro ao decodificar evento:", err)
+				continue
+			}
+
+			handler(event)
+		}
+
+		if err := stream.Err(); err != nil {
+			log.Println("Erro no ChangeStream:", err)
+		}
+	}()
+
+	return nil
 }
 
 func main() {
@@ -89,14 +129,17 @@ func main() {
 	node.StartServices()
 
 	var currentConsumer *rabbitmq.Consumer
+	var mongoWatchCancel context.CancelFunc
 
 	log.Printf("[Nó %d] Aguardando estado de liderança...", id)
+
 	for {
 		select {
 		case <-node.BecomeLeaderCh:
 			log.Printf("[Nó %d] *** TORNEI-ME LÍDER ***. Iniciando consumer.", id)
+
 			if currentConsumer != nil {
-				log.Println("[Nó %d] Aviso: Trocando liderança sem parada prévia?", id)
+				log.Printf("[Nó %d] Aviso: Trocando liderança sem parada prévia?", id)
 				currentConsumer.Stop()
 			}
 
@@ -111,15 +154,70 @@ func main() {
 				node.StartElection()
 			}
 
+			log.Printf("[Nó %d] Iniciando MongoDB Watcher...", id)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			mongoWatchCancel = cancel
+
+			mongoCli, err := NewMongoClient("mongodb+srv://workerjs:rWjHdj53F7lzADbq@cluster0.zhwrc7g.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+			if err != nil {
+				log.Fatalf("Erro ao conectar Mongo: %v", err)
+			}
+
+			thresholdColl := mongoCli.Database("test").Collection("thresholds")
+
+			cursor, err := thresholdColl.Find(ctx, map[string]interface{}{})
+			if err == nil {
+				for cursor.Next(ctx) {
+					var doc struct {
+						Sensor     string  `bson:"sensor"`
+						UpperLimit float64 `bson:"upperLimit"`
+						LowerLimit float64 `bson:"lowerLimit"`
+						Unit       string  `bson:"unit"`
+					}
+					cursor.Decode(&doc)
+
+					analyzer.SetThreshold(doc.Sensor, doc.UpperLimit, doc.LowerLimit, doc.Unit)
+
+					log.Printf("[Nó %d] Threshold carregado: %s [%.2f - %.2f]",
+						id, doc.Sensor, doc.LowerLimit, doc.UpperLimit)
+				}
+			}
+
+			err = StartMongoWatcher(ctx, thresholdColl, func(event map[string]interface{}) {
+				full, ok := event["fullDocument"].(map[string]interface{})
+				if !ok {
+					return
+				}
+
+				sensor, _ := full["sensor"].(string)
+				upper, _ := full["upperLimit"].(float64)
+				lower, _ := full["lowerLimit"].(float64)
+				unit, _ := full["unit"].(string)
+
+				analyzer.SetThreshold(sensor, upper, lower, unit)
+				log.Printf("[Nó %d] Threshold atualizado via watcher: %s [%.2f - %.2f]",
+					id, sensor, lower, upper)
+			})
+
+			if err != nil {
+				log.Printf("[Nó %d] Erro ao iniciar watcher Mongo: %v", id, err)
+			}
+
 		case <-node.StopLeaderCh:
 			log.Printf("[Nó %d] *** PERDI A LIDERANÇA ***. Parando consumer.", id)
+
 			if currentConsumer != nil {
 				if err := currentConsumer.Stop(); err != nil {
 					log.Printf("[Nó %d] Erro ao parar consumer: %s", err)
 				}
 				currentConsumer = nil
-			} else {
-				log.Printf("[Nó %d] Aviso: Recebi ordem de parada sem ter consumer ativo.", id)
+			}
+
+			if mongoWatchCancel != nil {
+				log.Printf("[Nó %d] Parando Mongo Watcher...", id)
+				mongoWatchCancel()
+				mongoWatchCancel = nil
 			}
 		}
 	}
