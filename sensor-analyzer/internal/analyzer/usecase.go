@@ -18,12 +18,6 @@ var sensorValueGauge = promauto.NewGaugeVec(
 	[]string{"sensor_type"},
 )
 
-var sensorRules = map[string]Threshold{
-	"temperature": {UpperLimit: 40, LowerLimit: 10, Unit: "°C"},
-	"pressure":    {UpperLimit: 100, LowerLimit: 50, Unit: "PSI"},
-	"vibration":   {UpperLimit: 10, LowerLimit: 1, Unit: "Hz"},
-}
-
 type analyzerUsecase struct {
 	Publisher rabbitmq.Publisher
 }
@@ -45,7 +39,7 @@ func (a *analyzerUsecase) Analyze(msg []byte) {
 		return
 	}
 
-	rules, found := sensorRules[sensorData.SensorType]
+	rules, found := GetThreshold(sensorData.SensorType)
 	if !found {
 		log.Printf("Tipo de sensor desconhecido: %s", sensorData.SensorType)
 		return

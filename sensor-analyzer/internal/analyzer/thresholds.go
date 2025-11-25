@@ -16,6 +16,7 @@ var (
 
 func SetThreshold(sensor string, upper float64, lower float64, unit string) {
 	thMutex.Lock()
+	print("SetThreshold()")
 	Thresholds[sensor] = Threshold{Sensor: sensor, UpperLimit: upper, LowerLimit: lower, Unit: unit}
 	thMutex.Unlock()
 }
